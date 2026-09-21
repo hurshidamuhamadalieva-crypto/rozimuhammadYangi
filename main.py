@@ -28,7 +28,27 @@ from handlers import fallback       # noqa: F401  hech narsa mos kelmasa - oxirg
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 
 
+async def on_shutdown(dispatcher):
+    try:
+        await dispatcher.storage.close()
+        await dispatcher.storage.wait_closed()
+        session = await bot.get_session()
+        await session.close()
+    except Exception:
+        pass
+
+
 async def on_startup(dispatcher):
+    # MUHIM: agar bot tokeniga avval webhook o'rnatilgan bo'lsa, Telegram
+    # polling (getUpdates) ni rad etadi: "Can't use getupdates method while
+    # webhook is active". Shuning uchun ishga tushishda webhook doim
+    # o'chiriladi.
+    try:
+        await bot.delete_webhook(drop_pending_updates=False)
+        logging.info("Webhook o'chirildi, polling rejimi tayyor ✅")
+    except Exception as e:
+        logging.error("Webhookni o'chirishda xatolik: %s", e)
+
     # MUHIM: bot buyruqlari ("/" bosilganda chiqadigan menyu) FAQAT
     # shaxsiy chatda ko'rinishi kerak. Guruh/kanallarda bu menyu
     # chiqmasligi uchun guruh doirasidagi buyruqlar ro'yxati bo'sh
@@ -48,4 +68,4 @@ async def on_startup(dispatcher):
 
 
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
+    executor.start_polling(dp, skip_updates=True, on_startup=on_startup, on_shutdown=on_shutdown)

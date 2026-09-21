@@ -4,10 +4,41 @@ config.py — Botning barcha sozlamalari shu yerda joylashgan.
 Faqat shu faylni tahrirlab, botning token, admin, guruh va narxlarini
 o'zgartirishingiz mumkin — boshqa fayllarga tegishning hojati yo'q.
 """
+import os
 from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent
+
+
+def _load_dotenv(path: Path) -> None:
+    """Oddiy .env o'qigich (qo'shimcha kutubxona kerak emas).
+    Muhit o'zgaruvchisi allaqachon berilgan bo'lsa (masalan Railway
+    Variables), .env uni ustiga yozmaydi."""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv(BASE_DIR / ".env")
+
 # ==================== BOT ====================
-TOKEN = "8474009974:AAF8mAY7tSoa5Wox3RskXAIG-wliEktzklU"
+# TOKEN endi kod ichida EMAS. U .env faylida yoki server (Railway)
+# Variables bo'limida BOT_TOKEN nomi bilan saqlanadi.
+TOKEN = os.getenv("BOT_TOKEN", "").strip()
+if not TOKEN:
+    raise RuntimeError(
+        "BOT_TOKEN topilmadi! .env fayliga yoki Railway Variables'ga "
+        "BOT_TOKEN=... qilib bot tokenini kiriting."
+    )
+
 BOT_USERNAME = "rishtonBogdodToshkentTaxi_bot"  # @ belgisiz
 
 # ==================== ADMIN ====================
@@ -20,8 +51,8 @@ DRIVER_CHANNELS = [-1003640341366]     # haydovchilar e'lonlari shu yerga tushad
 PASSENGER_CHANNELS = [-1003888459573]  # yo'lovchilar e'lonlari shu yerga tushadi
 
 # ==================== FAYLLAR ====================
-BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "storage_data"
+# Railway Volume ulangan bo'lsa, DATA_DIR=/app/storage_data qilib qo'yishingiz mumkin
+DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR / "storage_data")))
 DATA_FILE = DATA_DIR / "data.json"
 ADS_FILE = DATA_DIR / "ads.json"
 PAYMENTS_FILE = DATA_DIR / "payments.json"
@@ -89,4 +120,3 @@ STICKERS = {
     "payment_approved": "",   # to'lov tasdiqlanganda
     "order_taken": "",        # yo'lovchi zakazi qabul qilinganda
 }
-

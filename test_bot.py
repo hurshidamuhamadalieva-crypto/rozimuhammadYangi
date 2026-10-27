@@ -25,6 +25,16 @@ class BotTests(unittest.TestCase):
         u = {'subscription': {'active': True, 'end': None}}
         self.assertIsNone(extend_subscription(u, {'label': '1 oylik', 'days': 31}))
 
+    def test_new_driver_payment_marks_combined_application(self):
+        from storage import get_user, payments_store
+        from handlers.payment import _create_payment_record
+
+        u = get_user('77')
+        u['driver_status'] = 'none'
+        payment_id = asyncio.run(_create_payment_record('77', '1m', 'admin'))
+        self.assertTrue(payments_store.data['payments'][payment_id]['driver_application'])
+        self.assertEqual(get_user('77')['driver_status'], 'pending')
+
     def test_access_checks_expiry_and_approval(self):
         from storage import get_user
         from utils import driver_allowed
@@ -42,8 +52,8 @@ class BotTests(unittest.TestCase):
         self.assertEqual([len(row) for row in rows[:6]], [2] * 6)
         for username in ('test_user', ''):
             self.assertEqual(len(driver_channel_ad_kb('abc', '42', username).inline_keyboard), 2)
-        self.assertTrue(phone_request_kb().inline_keyboard)
-        self.assertTrue(location_choice_kb().inline_keyboard)
+        self.assertTrue(phone_request_kb().keyboard)
+        self.assertTrue(location_choice_kb().keyboard)
 
     def test_import_handlers(self):
         for name in ('start', 'driver_admin', 'driver', 'payment', 'payment_admin', 'passenger', 'fallback'):

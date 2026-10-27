@@ -10,9 +10,9 @@ Bir vaqtda faqat bitta bot nusxasini ishlating (JSON saqlash).
 
 ## Imkoniyatlar
 - Yo‘lovchi: telefon, ikki ustunli yo‘nalish, matn, ixtiyoriy lokatsiya; buyurtmani bekor qilish.
-- Telefon qo‘lda yoziladi yoki Telegram biriktirish menyusidan kontakt yuboriladi.
-- Inline lokatsiya tugmasi yo‘riqnoma beradi. Telegram biriktirish menyusidan joy yuboring,
-  yoki `41.3111, 69.2797` shaklida koordinata yozing. Inline tugma telefon/GPSni avtomatik ololmaydi.
+- Telefon Telegramning kontakt tugmasi bilan yoki qo‘lda yozib yuboriladi.
+- Lokatsiya Telegramning odatiy lokatsiya tugmasi bilan yuboriladi; lokatsiyasiz davom etish inline tugma orqali.
+- Haydovchi arizasi birlashtirilgan: telefon va profil ma’lumotlari → tarif → to‘lov → adminning yagona qarori.
 - Guruhdan haydovchi qidirish: https://t.me/bogdod_taxi16
 - Telefon va lokatsiyani faqat tasdiqlangan, faol obunali haydovchi ko‘radi.
 - Buyurtmani birinchi olgan haydovchi bajaradi va safarni yakunlay oladi.

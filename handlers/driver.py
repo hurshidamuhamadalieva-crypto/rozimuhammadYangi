@@ -48,13 +48,14 @@ async def driver_get_phone(message: types.Message, state: FSMContext):
 
     if flow.get("driver_application"):
         from storage import touch_user_profile
-        from handlers.driver_admin import notify_admins_new_application
         touch_user_profile(uid, message.from_user.full_name, message.from_user.username)
-        u["driver_status"] = "pending"
         u["driver_paused"] = True
         await save_users()
-        await notify_admins_new_application(uid, u["full_name"], u["username"])
-        return await message.answer("✅ Arizangiz adminga yuborildi.", reply_markup=main_menu_kb())
+        from handlers.payment import show_tariffs
+        await message.answer(
+            "✅ Ma’lumotlaringiz saqlandi. Endi tarifni tanlab, to‘lov arizasini yuboring.",
+        )
+        return await show_tariffs(message.chat.id)
 
     if not u["subscription"].get("active"):
         from handlers.payment import show_tariffs

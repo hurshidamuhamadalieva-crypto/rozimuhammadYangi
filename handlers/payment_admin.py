@@ -101,7 +101,7 @@ async def admin_payments_list(call: types.CallbackQuery, state: FSMContext):
             f"🆔 <code>{p['uid']}</code>\n"
             f"📦 {tariff['label']} — {fmt_money(p['price'])}"
         )
-        kb = admin_payment_decision_kb(pid)
+        kb = admin_payment_decision_kb(pid, driver_application=p.get("driver_application", False))
         if p.get("receipt_photo"):
             await bot.send_photo(call.from_user.id, p["receipt_photo"], caption=caption, reply_markup=kb)
         else:

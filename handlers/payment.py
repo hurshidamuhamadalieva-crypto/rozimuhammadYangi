@@ -68,6 +68,8 @@ async def payment_method_back(call: types.CallbackQuery):
 
 async def _create_payment_record(uid: str, tariff_key: str, method: str, receipt_photo: str = None) -> str:
     tariff = TARIFFS[tariff_key]
+    user = get_user(uid)
+    driver_application = user.get("driver_status") != "approved"
     for payment_id, previous in payments_store.data["payments"].items():
         if previous["uid"] == uid and previous["status"] == "pending" and previous["tariff"] == tariff_key and previous["method"] == method:
             if receipt_photo:
@@ -83,7 +85,12 @@ async def _create_payment_record(uid: str, tariff_key: str, method: str, receipt
         "status": "pending",
         "created": time.time(),
         "receipt_photo": receipt_photo,
+        "driver_application": driver_application,
     }
+    if driver_application:
+        user["driver_status"] = "pending"
+        user["driver_paused"] = True
+        await save_users()
     await save_payments()
     return payment_id
 
@@ -95,16 +102,18 @@ async def _notify_admins_payment(payment_id: str):
     name = display_name(u, p["uid"])
     method_label = {"admin": "👨‍💼 Admin orqali murojaat", "receipt": "🧾 Chek orqali"}.get(p["method"], p["method"])
 
+    title = "🚘 <b>Yangi haydovchi arizasi + to‘lov</b>" if p.get("driver_application") else "💳 <b>Yangi to‘lov so‘rovi</b>"
     caption = (
-        f"💳 <b>Yangi to‘lov so‘rovi</b>\n\n"
+        f"{title}\n\n"
         f"👤 Foydalanuvchi: <b>{name}</b>\n\n"
         f"🆔 ID: <code>{p['uid']}</code>\n\n"
+        f"🔗 Username: @{u.get('username') or '—'}\n\n"
         f"📞 Telefon: {u.get('phone') or '—'}\n\n"
         f"📦 Tarif: <b>{tariff['label']}</b>\n\n"
         f"💰 Narxi: <b>{fmt_money(p['price'])}</b>\n\n"
         f"🔧 Usul: {method_label}"
     )
-    kb = admin_payment_decision_kb(payment_id)
+    kb = admin_payment_decision_kb(payment_id, driver_application=p.get("driver_application", False))
     notifs = []
     for admin in ADMINS:
         try:

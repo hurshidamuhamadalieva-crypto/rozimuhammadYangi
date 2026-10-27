@@ -54,9 +54,9 @@ def driver_apply_kb() -> InlineKeyboardMarkup:
 
 
 def phone_request_kb():
-    kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton("📱 Raqamni qanday yuboraman?", callback_data="input:phone"))
-    kb.add(InlineKeyboardButton("❌ Bekor qilish", callback_data="cancel_flow"))
+    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    kb.add(KeyboardButton("📱 Raqamni yuborish", request_contact=True))
+    kb.add(KeyboardButton("❌ Bekor qilish"))
     return kb
 
 
@@ -161,11 +161,17 @@ def payment_method_kb(tariff_key: str) -> InlineKeyboardMarkup:
     return kb
 
 
-def admin_payment_decision_kb(payment_id: str) -> InlineKeyboardMarkup:
+def admin_payment_decision_kb(payment_id: str, driver_application: bool = False) -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"pay_ok:{payment_id}"),
-        InlineKeyboardButton("❌ Rad etish", callback_data=f"pay_no:{payment_id}"),
+        InlineKeyboardButton(
+            "✅ Arizani tasdiqlash" if driver_application else "✅ Tasdiqlash",
+            callback_data=f"pay_ok:{payment_id}",
+        ),
+        InlineKeyboardButton(
+            "❌ Arizani rad etish" if driver_application else "❌ Rad etish",
+            callback_data=f"pay_no:{payment_id}",
+        ),
     )
     return kb
 
@@ -194,8 +200,18 @@ def route_kb() -> InlineKeyboardMarkup:
 
 
 def location_choice_kb():
+    """Telegramning standart lokatsiya yuborish tugmasi.
+
+    Lokatsiyani request_location faqat reply klaviaturada yubora oladi;
+    o'tkazib yuborish tugmasi alohida inline xabarda beriladi.
+    """
+    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    kb.add(KeyboardButton("📍 Lokatsiyani yuborish", request_location=True))
+    return kb
+
+
+def location_skip_kb() -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton("📍 Lokatsiya yuborish", callback_data="input:location"))
     kb.add(InlineKeyboardButton("➡️ Lokatsiyasiz davom etish", callback_data="location:skip"))
     kb.add(InlineKeyboardButton("❌ Bekor qilish", callback_data="cancel_flow"))
     return kb

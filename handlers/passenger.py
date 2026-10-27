@@ -20,7 +20,7 @@ from html import escape
 import logging
 from keyboards import (
     main_menu_kb, passenger_entry_kb, phone_request_kb, REMOVE_KB,
-    route_kb, location_choice_kb, passenger_channel_kb, passenger_channel_taken_kb,
+    route_kb, location_choice_kb, location_skip_kb, passenger_channel_kb, passenger_channel_taken_kb,
     passenger_ad_full_kb, map_choice_kb, open_map_link_kb, driver_profile_kb,
     cancel_inline_kb,
 )
@@ -145,6 +145,10 @@ async def passenger_order_text_got(message: types.Message, state: FSMContext):
         "📍 Lokatsiyangizni yubormoqchimisiz? Bu shofirimizga qulay bo‘ladi.\n"
         "(Majburiy emas)",
         reply_markup=location_choice_kb(),
+    )
+    await message.answer(
+        "Lokatsiya yubormasangiz, quyidagi tugma orqali davom eting:",
+        reply_markup=location_skip_kb(),
     )
 
 
@@ -374,13 +378,18 @@ async def skip_location_inline(call, state):
         return await call.answer("Yuborilmadi. Qayta urinib ko‘ring.", show_alert=True)
     await state.finish()
     await call.message.edit_reply_markup()
-    await call.message.answer("✅ Buyurtma guruhga yuborildi.", reply_markup=main_menu_kb())
+    await call.message.answer("✅ Buyurtma guruhga yuborildi.", reply_markup=REMOVE_KB)
+    await call.message.answer("🏠 Asosiy menyu:", reply_markup=main_menu_kb(is_admin=call.from_user.id in ADMINS))
     await call.answer()
 
 
 @dp.callback_query_handler(lambda c: c.data == "input:location", state=PassengerStates.waiting_location)
 async def location_help(call):
-    await call.message.answer("📍 Telegramdagi 📎 biriktirish → Lokatsiya orqali yuboring. Yoki koordinatani yozing: 41.3111, 69.2797", reply_markup=location_choice_kb())
+    await call.message.answer(
+        "📍 Telegramdagi lokatsiya tugmasini bosing yoki koordinatani yozing: 41.3111, 69.2797",
+        reply_markup=location_choice_kb(),
+    )
+    await call.message.answer("Lokatsiyasiz davom etish:", reply_markup=location_skip_kb())
     await call.answer()
 
 
@@ -395,7 +404,8 @@ async def location_manual(message, state):
     if not await _submit_passenger_ad(message.from_user.id, await state.get_data(), {"lat": lat, "lon": lon}):
         return await message.answer("Yuborilmadi. Qayta urinib ko‘ring.")
     await state.finish()
-    await message.answer("✅ Buyurtma guruhga yuborildi.", reply_markup=main_menu_kb())
+    await message.answer("✅ Buyurtma guruhga yuborildi.", reply_markup=REMOVE_KB)
+    await message.answer("🏠 Asosiy menyu:", reply_markup=main_menu_kb(is_admin=message.from_user.id in ADMINS))
 
 
 @dp.callback_query_handler(lambda c: c.data.startswith("order_cancel:") or c.data.startswith("order_done:"), state="*")

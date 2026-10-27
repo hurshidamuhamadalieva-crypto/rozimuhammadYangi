@@ -5,6 +5,7 @@ tasdiqlash/rad etish va tasdiqlangan haydovchilar ro'yxati.
 """
 from aiogram import types
 from aiogram.dispatcher import FSMContext
+from html import escape
 
 from bot_instance import bot, dp
 from config import ADMINS
@@ -107,17 +108,14 @@ async def driver_apply(call: types.CallbackQuery):
         await call.message.answer("Ariza uchun avval telefon raqamingizni yozing:", reply_markup=phone_request_kb())
         return await call.answer()
 
-    u["driver_status"] = "pending"
-    u["driver_paused"] = True
     u["full_name"] = call.from_user.full_name or u.get("full_name", "")
     u["username"] = call.from_user.username or u.get("username", "")
     await save_users()
-
-    await notify_admins_new_application(uid, u["full_name"], u["username"])
-    try:
-        await call.message.edit_text("✅ Arizangiz adminga yuborildi! ⏳ Iltimos, javobini kuting.")
-    except Exception:
-        await call.message.answer("✅ Arizangiz adminga yuborildi! ⏳ Iltimos, javobini kuting.")
+    from handlers.payment import show_tariffs
+    await call.message.answer(
+        "✅ Ma’lumotlaringiz saqlandi. Endi tarifni tanlab, to‘lov arizasini yuboring.",
+    )
+    await show_tariffs(call.message.chat.id)
     await call.answer()
 
 
@@ -273,11 +271,16 @@ async def reject_with_reason(message, state):
         payment["status"] = "rejected"
         payment["rejection_reason"] = message.text[:700]
         await save_payments()
+        if payment.get("driver_application"):
+            rejected_user = get_user(payment["uid"])
+            rejected_user["driver_status"] = "rejected"
+            rejected_user["driver_paused"] = True
+            await save_users()
         await state.finish()
         text = "❌ To‘lov rad etildi. Sabab: " + escape(message.text[:700])
         await _update_payment_notifs(pid, text)
         try:
-            await bot.send_message(int(payment["uid"]), text)
+            await bot.send_message(int(payment["uid"]), text + "\n\nQayta ariza berish uchun haydovchi bo‘limiga kiring.", reply_markup=driver_apply_kb())
         except Exception:
             await message.answer("Foydalanuvchiga xabar yetkazilmadi.")
         return await message.answer("✅ Sabab saqlandi.", reply_markup=main_menu_kb(is_admin=True))

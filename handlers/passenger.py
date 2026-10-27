@@ -15,7 +15,9 @@ from config import ADMINS, PASSENGER_CHANNELS, PASSENGER_ROUTES
 from storage import get_user, save_users, ads_store, save_ads, next_ad_number
 from states import PassengerStates
 from stickers import send_sticker_safe
-from utils import normalize_phone, new_id, display_name
+from utils import normalize_phone, new_id, display_name, driver_allowed
+from html import escape
+import logging
 from keyboards import (
     main_menu_kb, passenger_entry_kb, phone_request_kb, REMOVE_KB,
     route_kb, location_choice_kb, passenger_channel_kb, passenger_channel_taken_kb,
@@ -104,7 +106,7 @@ async def passenger_custom_route(call: types.CallbackQuery, state: FSMContext):
 
 @dp.message_handler(state=PassengerStates.waiting_route_custom, content_types=["text"])
 async def passenger_route_custom_got(message: types.Message, state: FSMContext):
-    await state.update_data(passenger_route=message.text.strip())
+    await state.update_data(passenger_route=escape(message.text.strip()[:100]))
     await state.set_state(PassengerStates.waiting_order_text)
     await _ask_order_text(message.chat.id)
 
@@ -137,7 +139,7 @@ async def _ask_order_text(chat_id: int):
 # ==================== MATN ====================
 @dp.message_handler(state=PassengerStates.waiting_order_text, content_types=["text"])
 async def passenger_order_text_got(message: types.Message, state: FSMContext):
-    await state.update_data(passenger_text=message.text.strip())
+    await state.update_data(passenger_text=escape(message.text.strip()[:450]))
     await state.set_state(PassengerStates.waiting_location)
     await message.answer(
         "📍 Lokatsiyangizni yubormoqchimisiz? Bu shofirimizga qulay bo‘ladi.\n"
@@ -151,7 +153,8 @@ async def passenger_order_text_got(message: types.Message, state: FSMContext):
 async def passenger_location_got(message: types.Message, state: FSMContext):
     data = await state.get_data()
     loc = {"lat": message.location.latitude, "lon": message.location.longitude}
-    await _submit_passenger_ad(message.from_user.id, data, loc)
+    if not await _submit_passenger_ad(message.from_user.id, data, loc):
+        return await message.answer("Guruhga yuborilmadi. Qayta lokatsiya yuboring yoki keyinroq urinib ko‘ring.")
     await state.finish()
     await message.answer(
         "✅ Zakaz qabul qilindi! Shofir qabul qilishi kutilmoqda.",
@@ -163,7 +166,8 @@ async def passenger_location_got(message: types.Message, state: FSMContext):
 @dp.message_handler(lambda m: m.text == "➡️ Lokatsiyasiz davom etish", state=PassengerStates.waiting_location)
 async def passenger_location_skip(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    await _submit_passenger_ad(message.from_user.id, data, None)
+    if not await _submit_passenger_ad(message.from_user.id, data, None):
+        return await message.answer("Guruhga yuborilmadi. Qayta urinib ko‘ring.", reply_markup=location_choice_kb())
     await state.finish()
     await message.answer(
         "✅ E’lonimiz shofirlar guruhimizga yuborildi. Qabul qilinishi kutilmoqda.",
@@ -201,23 +205,40 @@ async def _submit_passenger_ad(from_uid: int, data: dict, location):
         f"<blockquote>{ad['text']}</blockquote>"
     )
     kb = passenger_channel_kb(ad_id)
+    delivered = []
     for ch in PASSENGER_CHANNELS:
         try:
             msg = await bot.send_message(ch, group_text, reply_markup=kb)
+            delivered.append({"chat": ch, "message": msg.message_id})
             ad["group_msg_id"] = msg.message_id
             ad["group_chat_id"] = ch
         except Exception:
-            pass
+            logging.exception("Yo‘lovchi e’lonini guruhga yuborib bo‘lmadi")
+    ad["group_messages"] = delivered
+    if not delivered:
+        ads_store.data["passenger"].pop(ad_id, None)
     await save_ads()
+    if delivered:
+        controls = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("❌ Buyurtmani bekor qilish", callback_data=f"order_cancel:{ad_id}"))
+        try:
+            await bot.send_message(from_uid, f"Buyurtma #{number:02d}", reply_markup=controls)
+        except Exception:
+            logging.exception("Buyurtma boshqaruvi yetkazilmadi")
+    return bool(delivered)
 
 
 # ==================== HAYDOVCHI: E'LONNI KO'RISH ====================
 @dp.callback_query_handler(lambda c: c.data.startswith("view_pass:"))
 async def view_passenger_ad(call: types.CallbackQuery):
+    if not driver_allowed(call.from_user.id):
+        return await call.answer("Faqat tasdiqlangan, faol obunali haydovchilar uchun.", show_alert=True)
     ad_id = call.data.split(":")[1]
     ad = ads_store.data["passenger"].get(ad_id)
     if not ad:
         return await call.answer("❌ E’lon topilmadi yoki muddati o‘tgan.", show_alert=True)
+
+    if ad.get("status") in ("cancelled", "completed"):
+        return await call.answer("Buyurtma yopilgan.", show_alert=True)
 
     if ad.get("taken_by"):
         return await call.answer("❌ Ushbu e’lon allaqachon qabul qilingan.", show_alert=True)
@@ -242,11 +263,16 @@ async def view_passenger_ad(call: types.CallbackQuery):
 # ==================== HAYDOVCHI: QABUL QILISH ====================
 @dp.callback_query_handler(lambda c: c.data.startswith("take_pass:"))
 async def take_passenger_ad(call: types.CallbackQuery):
+    if not driver_allowed(call.from_user.id):
+        return await call.answer("Faqat tasdiqlangan, faol obunali haydovchilar uchun.", show_alert=True)
     uid = str(call.from_user.id)
     ad_id = call.data.split(":")[1]
     ad = ads_store.data["passenger"].get(ad_id)
     if not ad:
         return await call.answer("❌ E’lon topilmadi.", show_alert=True)
+
+    if ad.get("status") in ("cancelled", "completed"):
+        return await call.answer("Buyurtma yopilgan.", show_alert=True)
 
     if ad.get("taken_by"):
         return await call.answer(
@@ -265,7 +291,7 @@ async def take_passenger_ad(call: types.CallbackQuery):
 
     # guruhdagi xabarni yangilash
     if ad.get("group_msg_id"):
-        for ch in (ad.get("group_chat_id"),) if ad.get("group_chat_id") else PASSENGER_CHANNELS:
+        for posted in ad.get("group_messages") or [{"chat": ad.get("group_chat_id"), "message": ad["group_msg_id"]}]:
             try:
                 new_text = (
                     f"🧍 <b>Yo‘lovchi e’loni</b>   <code>#{ad['number']:02d}</code>\n\n"
@@ -274,7 +300,7 @@ async def take_passenger_ad(call: types.CallbackQuery):
                     f"✅ Qabul qilindi: <b>{driver_name}</b>"
                 )
                 await bot.edit_message_text(
-                    new_text, ch, ad["group_msg_id"], reply_markup=passenger_channel_taken_kb()
+                    new_text, posted["chat"], posted["message"], reply_markup=passenger_channel_taken_kb()
                 )
             except Exception:
                 pass
@@ -283,7 +309,7 @@ async def take_passenger_ad(call: types.CallbackQuery):
         await call.message.edit_reply_markup()
     except Exception:
         pass
-    await call.message.answer("✅ Siz ushbu zakazni qabul qildingiz. Yo‘lovchi bilan bog‘laning!")
+    await call.message.answer("✅ Siz ushbu zakazni qabul qildingiz. Yo‘lovchi bilan bog‘laning!", reply_markup=types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("🏁 Safarni yakunlash", callback_data=f"order_done:{ad_id}")))
     await call.answer()
     await send_sticker_safe(int(uid), "order_taken")
 
@@ -292,7 +318,7 @@ async def take_passenger_ad(call: types.CallbackQuery):
     try:
         await bot.send_message(
             int(passenger_uid),
-            f"✅ Sizni <b>{driver_name}</b> ismli shofirimiz qabul qildi. Oq yo‘l bo‘lsin! 🚕",
+            f"✅ Sizni <b>{driver_name}</b> ismli shofirimiz qabul qildi. Oq yo‘l bo‘lsin! 🚕\n📞 {driver.get('phone') or 'Telefon kiritilmagan'}",
             reply_markup=driver_profile_kb(ad.get("taken_by_username")),
         )
         await bot.send_message(int(passenger_uid), "🙏 Keyingi safar ham bizni tanlang!")
@@ -303,6 +329,8 @@ async def take_passenger_ad(call: types.CallbackQuery):
 # ==================== LOKATSIYANI OCHISH ====================
 @dp.callback_query_handler(lambda c: c.data.startswith("open_loc:"))
 async def open_location(call: types.CallbackQuery):
+    if not driver_allowed(call.from_user.id):
+        return await call.answer("Faol haydovchi obunasi kerak.", show_alert=True)
     ad_id = call.data.split(":")[1]
     ad = ads_store.data["passenger"].get(ad_id)
     if not ad or not ad.get("location"):
@@ -313,6 +341,8 @@ async def open_location(call: types.CallbackQuery):
 
 @dp.callback_query_handler(lambda c: c.data.startswith("maplink:"))
 async def open_map_link(call: types.CallbackQuery):
+    if not driver_allowed(call.from_user.id):
+        return await call.answer("Faol haydovchi obunasi kerak.", show_alert=True)
     _, provider, ad_id = call.data.split(":")
     ad = ads_store.data["passenger"].get(ad_id)
     if not ad or not ad.get("location"):
@@ -328,3 +358,71 @@ async def open_map_link(call: types.CallbackQuery):
 
     await call.message.answer(f"📍 {label}:", reply_markup=open_map_link_kb(url, label))
     await call.answer()
+
+
+@dp.callback_query_handler(lambda c: c.data == "pass_group", state="*")
+async def passenger_group(call):
+    kb = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("Guruhga o‘tish", url="https://t.me/bogdod_taxi16"))
+    await call.message.answer("🔎 Guruhdan shofyor topishingiz mumkin: https://t.me/bogdod_taxi16", reply_markup=kb)
+    await call.answer()
+
+
+@dp.callback_query_handler(lambda c: c.data == "location:skip", state=PassengerStates.waiting_location)
+async def skip_location_inline(call, state):
+    data = await state.get_data()
+    if not await _submit_passenger_ad(call.from_user.id, data, None):
+        return await call.answer("Yuborilmadi. Qayta urinib ko‘ring.", show_alert=True)
+    await state.finish()
+    await call.message.edit_reply_markup()
+    await call.message.answer("✅ Buyurtma guruhga yuborildi.", reply_markup=main_menu_kb())
+    await call.answer()
+
+
+@dp.callback_query_handler(lambda c: c.data == "input:location", state=PassengerStates.waiting_location)
+async def location_help(call):
+    await call.message.answer("📍 Telegramdagi 📎 biriktirish → Lokatsiya orqali yuboring. Yoki koordinatani yozing: 41.3111, 69.2797", reply_markup=location_choice_kb())
+    await call.answer()
+
+
+@dp.message_handler(state=PassengerStates.waiting_location, content_types=["text"])
+async def location_manual(message, state):
+    try:
+        lat, lon = map(float, message.text.replace(";", ",").split(","))
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValueError()
+    except (ValueError, TypeError):
+        return await message.answer("Koordinatani 41.3111, 69.2797 shaklida yozing yoki lokatsiyasiz davom eting.", reply_markup=location_choice_kb())
+    if not await _submit_passenger_ad(message.from_user.id, await state.get_data(), {"lat": lat, "lon": lon}):
+        return await message.answer("Yuborilmadi. Qayta urinib ko‘ring.")
+    await state.finish()
+    await message.answer("✅ Buyurtma guruhga yuborildi.", reply_markup=main_menu_kb())
+
+
+@dp.callback_query_handler(lambda c: c.data.startswith("order_cancel:") or c.data.startswith("order_done:"), state="*")
+async def close_order(call):
+    action, ad_id = call.data.split(":")
+    ad = ads_store.data["passenger"].get(ad_id)
+    if not ad:
+        return await call.answer("Buyurtma topilmadi.", show_alert=True)
+    uid = str(call.from_user.id)
+    if action == "order_cancel" and uid != ad["user"]:
+        return await call.answer("Faqat buyurtma egasi uchun.", show_alert=True)
+    if action == "order_done" and uid != ad.get("taken_by"):
+        return await call.answer("Faqat buyurtmani olgan haydovchi uchun.", show_alert=True)
+    if ad.get("status") in ("cancelled", "completed"):
+        return await call.answer("Buyurtma allaqachon yopilgan.", show_alert=True)
+    ad["status"] = "cancelled" if action == "order_cancel" else "completed"
+    await save_ads()
+    label = "❌ Buyurtma bekor qilindi" if action == "order_cancel" else "🏁 Safar yakunlandi"
+    for posted in ad.get("group_messages", []):
+        try:
+            await bot.edit_message_text(f"#{ad['number']:02d} {label}", posted["chat"], posted["message"])
+        except Exception:
+            logging.exception("Yopilgan buyurtma xabarini yangilab bo‘lmadi")
+    await call.message.edit_reply_markup()
+    for target in {ad["user"], ad.get("taken_by")} - {None}:
+        try:
+            await bot.send_message(int(target), label)
+        except Exception:
+            logging.exception("Buyurtma holati yetkazilmadi")
+    await call.answer(label)

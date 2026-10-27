@@ -2,6 +2,9 @@
 """utils.py — yordamchi funksiyalar."""
 import time
 import uuid
+from html import escape
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
 def normalize_phone(raw: str):
@@ -48,7 +51,7 @@ def now_ts() -> float:
 def fmt_date(ts: float) -> str:
     if not ts:
         return "—"
-    return time.strftime("%d.%m.%Y %H:%M", time.localtime(ts))
+    return datetime.fromtimestamp(ts, ZoneInfo("Asia/Tashkent")).strftime("%d.%m.%Y %H:%M")
 
 
 def fmt_money(amount: int) -> str:
@@ -66,7 +69,29 @@ def seconds_to_human(seconds: float) -> str:
 
 def display_name(user: dict, uid: str) -> str:
     if user.get("full_name"):
-        return user["full_name"]
+        return escape(user["full_name"])
     if user.get("username"):
-        return "@" + user["username"]
+        return "@" + escape(user["username"])
     return f"ID:{uid}"
+
+
+def driver_allowed(uid):
+    from config import ADMINS
+    from storage import get_user
+    if int(uid) in ADMINS:
+        return True
+    u = get_user(str(uid))
+    sub = u.get("subscription", {})
+    return (u.get("driver_status") == "approved" and sub.get("active", False)
+            and (sub.get("end") is None or sub["end"] > time.time()))
+
+
+def extend_subscription(user, tariff):
+    sub = user.get("subscription", {})
+    now = time.time()
+    lifetime = sub.get("active") and sub.get("end") is None
+    end = None if lifetime or tariff["days"] is None else max(now, sub.get("end") or now) + tariff["days"] * 86400
+    user["subscription"] = {"tariff": "Umrbod" if end is None else tariff["label"],
+        "start": sub.get("start") or now, "end": end, "active": True,
+        "reminded_3d": False, "reminded_expired": False}
+    return end

@@ -27,9 +27,11 @@ async def notify_admins_new_application(uid: str, full_name: str, username: str)
             msg = await bot.send_message(
                 admin,
                 f"🚘 <b>Yangi haydovchilik arizasi</b>\n\n"
-                f"👤 Ism: <b>{full_name}</b>\n"
+                f"👤 Ism: <b>{escape(full_name)}</b>\n"
                 f"🔗 Username: {username_display}\n"
-                f"🆔 ID: <code>{uid}</code>",
+                f"🆔 ID: <code>{uid}</code>\n"
+                f"📞 Telefon: {get_user(uid).get('phone') or 'Hali kiritilmagan'}\n"
+                f"📋 Batafsil ma’lumot va profil quyidagi tugmalarda.",
                 reply_markup=kb,
             )
             notifs.append({"admin": admin, "msg_id": msg.message_id})
@@ -98,6 +100,13 @@ async def driver_apply(call: types.CallbackQuery):
     if u["driver_status"] == "approved":
         return await call.answer("Siz allaqachon tasdiqlangan haydovchisiz.", show_alert=True)
 
+    if not u.get("phone"):
+        state = dp.current_state(chat=call.from_user.id, user=call.from_user.id)
+        await state.update_data(driver_application=True)
+        await state.set_state(DriverStates.waiting_phone)
+        await call.message.answer("Ariza uchun avval telefon raqamingizni yozing:", reply_markup=phone_request_kb())
+        return await call.answer()
+
     u["driver_status"] = "pending"
     u["driver_paused"] = True
     u["full_name"] = call.from_user.full_name or u.get("full_name", "")
@@ -146,19 +155,12 @@ async def admin_driver_action(call: types.CallbackQuery):
         await call.answer("Tasdiqlandi ✅")
 
     elif action == "drv_no":
-        u["driver_status"] = "rejected"
-        u["driver_paused"] = True
-        await save_users()
-        await _update_admin_notifs(uid, "❌ Amal bajarildi (rad etildi)")
-        try:
-            await bot.send_message(
-                int(uid),
-                "❌ Admin arizangizni rad etdi. Xohlasangiz qayta ariza yuborishingiz mumkin.",
-                reply_markup=main_menu_kb(),
-            )
-        except Exception:
-            pass
-        await call.answer("Rad etildi ❌")
+        from states import AdminStates
+        state = dp.current_state(chat=call.from_user.id, user=call.from_user.id)
+        await state.set_data({"reject_uid": uid})
+        await state.set_state(AdminStates.rejection_reason)
+        await bot.send_message(call.from_user.id, "Rad etish sababini yozing (bekor qilish uchun /start):")
+        await call.answer()
 
     elif action == "drv_view":
         name = display_name(u, uid)
@@ -170,7 +172,10 @@ async def admin_driver_action(call: types.CallbackQuery):
             f"🆔 ID: <code>{uid}</code>\n"
             f"📞 Telefon: {u.get('phone') or '—'}\n"
             f"📋 Status: {u.get('driver_status', '—')}\n"
-            f"💳 Obuna: {sub_text}"
+            f"💳 Obuna: {sub_text}\n"
+            f"📦 Tarif: {sub.get('tariff') or '—'}\n"
+            f"📅 Tugashi: {__import__('utils').fmt_date(sub['end']) if sub.get('end') else 'Muddatsiz / mavjud emas'}\n"
+            f"🔗 Username: @{u.get('username') or '—'}"
         )
         await bot.send_message(call.from_user.id, txt, reply_markup=admin_driver_manage_kb(uid))
         await call.answer()
@@ -246,4 +251,83 @@ async def admin_drivers_list(call: types.CallbackQuery, state: FSMContext):
         await call.message.edit_text("📋 Tasdiqlangan haydovchilar ro‘yxati:", reply_markup=kb)
     except Exception:
         await call.message.answer("📋 Tasdiqlangan haydovchilar ro‘yxati:", reply_markup=kb)
+    await call.answer()
+
+
+from states import AdminStates
+from html import escape
+
+@dp.message_handler(state=AdminStates.rejection_reason, content_types=["text"])
+async def reject_with_reason(message, state):
+    if message.from_user.id not in ADMINS:
+        return
+    data = await state.get_data()
+    if data.get("reject_payment"):
+        from storage import payments_store, save_payments
+        from handlers.payment_admin import _update_payment_notifs
+        pid = data["reject_payment"]
+        payment = payments_store.data["payments"].get(pid)
+        if not payment or payment["status"] != "pending":
+            await state.finish()
+            return await message.answer("Bu to‘lov allaqachon ko‘rib chiqilgan.")
+        payment["status"] = "rejected"
+        payment["rejection_reason"] = message.text[:700]
+        await save_payments()
+        await state.finish()
+        text = "❌ To‘lov rad etildi. Sabab: " + escape(message.text[:700])
+        await _update_payment_notifs(pid, text)
+        try:
+            await bot.send_message(int(payment["uid"]), text)
+        except Exception:
+            await message.answer("Foydalanuvchiga xabar yetkazilmadi.")
+        return await message.answer("✅ Sabab saqlandi.", reply_markup=main_menu_kb(is_admin=True))
+    uid = data["reject_uid"]
+    u = get_user(uid)
+    u["driver_status"] = "rejected"
+    u["driver_paused"] = True
+    u["rejection_reason"] = message.text[:700]
+    await save_users()
+    await state.finish()
+    await _update_admin_notifs(uid, "❌ Rad etildi: " + escape(message.text[:700]))
+    try:
+        await bot.send_message(int(uid), "❌ Arizangiz rad etildi.\nSabab: " + escape(message.text[:700]), reply_markup=main_menu_kb())
+    except Exception:
+        await message.answer("Qaror saqlandi, lekin foydalanuvchiga xabar yetkazilmadi.")
+    await message.answer("✅ Rad etish sababi saqlandi.", reply_markup=main_menu_kb(is_admin=True))
+
+
+@dp.callback_query_handler(lambda c: c.data.startswith("admin_extend:"), state="*")
+async def admin_extend_menu(call):
+    if call.from_user.id not in ADMINS:
+        return await call.answer("Faqat admin uchun.", show_alert=True)
+    from config import TARIFFS
+    uid = call.data.split(":")[1]
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    for key, tariff in TARIFFS.items():
+        kb.insert(types.InlineKeyboardButton(tariff["label"], callback_data=f"admin_grant:{uid}:{key}"))
+    await call.message.answer("Qo‘shiladigan obuna muddatini tanlang:", reply_markup=kb)
+    await call.answer()
+
+
+@dp.callback_query_handler(lambda c: c.data.startswith("admin_grant:"), state="*")
+async def admin_grant(call):
+    if call.from_user.id not in ADMINS:
+        return await call.answer("Faqat admin uchun.", show_alert=True)
+    from config import TARIFFS
+    from utils import extend_subscription, fmt_date
+    _, uid, key = call.data.split(":")
+    if key not in TARIFFS:
+        return await call.answer("Tarif topilmadi.", show_alert=True)
+    u = get_user(uid)
+    if u["driver_status"] != "approved":
+        return await call.answer("Avval haydovchini tasdiqlang.", show_alert=True)
+    end = extend_subscription(u, TARIFFS[key])
+    await save_users()
+    await call.message.edit_reply_markup()
+    text = "✅ Obuna uzaytirildi. Tugashi: " + (fmt_date(end) if end else "Umrbod")
+    await call.message.answer(text)
+    try:
+        await bot.send_message(int(uid), text, reply_markup=driver_main_kb())
+    except Exception:
+        await call.message.answer("Haydovchiga xabar yetkazilmadi.")
     await call.answer()

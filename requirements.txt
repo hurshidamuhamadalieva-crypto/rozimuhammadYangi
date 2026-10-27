@@ -16,3 +16,5 @@ pydantic==1.10.24
 pytz==2025.2
 typing_extensions==4.15.0
 yarl==1.22.0
+
+tzdata>=2024.1

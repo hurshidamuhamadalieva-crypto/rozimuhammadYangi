@@ -53,13 +53,10 @@ def driver_apply_kb() -> InlineKeyboardMarkup:
     return kb
 
 
-def phone_request_kb() -> ReplyKeyboardMarkup:
-    """Telegram talabiga ko'ra, telefon raqamni tugma orqali yuborish
-    FAQAT oddiy (reply) klaviaturada ishlaydi — shuning uchun bu yerda
-    istisno qilinadi."""
-    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    kb.add(KeyboardButton("📱 Raqamni yuborish", request_contact=True))
-    kb.add(KeyboardButton("❌ Bekor qilish"))
+def phone_request_kb():
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton("📱 Raqamni qanday yuboraman?", callback_data="input:phone"))
+    kb.add(InlineKeyboardButton("❌ Bekor qilish", callback_data="cancel_flow"))
     return kb
 
 
@@ -73,6 +70,7 @@ def driver_main_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton("🆕 Yangi e’lon", callback_data="drv_new_ad"),
         InlineKeyboardButton("💳 Mening obunam", callback_data="drv_sub"),
     )
+    kb.add(InlineKeyboardButton("➕ Obunani uzaytirish", callback_data="drv_renew"))
     kb.add(InlineKeyboardButton("🏠 Bosh menyu", callback_data="menu:home"))
     return kb
 
@@ -107,10 +105,7 @@ def driver_channel_ad_kb(ad_id: str, uid: str, username: str) -> InlineKeyboardM
     bot orqali profil ma'lumotini (ism, telefon) ko'rsatadi.
     """
     kb = InlineKeyboardMarkup(row_width=1)
-    if username:
-        kb.add(InlineKeyboardButton("👤 Haydovchi profili", url=f"https://t.me/{username}"))
-    else:
-        kb.add(InlineKeyboardButton("👤 Haydovchi profili", callback_data=f"profile_drv:{ad_id}"))
+    kb.add(InlineKeyboardButton("👤 Haydovchi profili", callback_data=f"profile_drv:{ad_id}"))
     kb.add(InlineKeyboardButton(
         "📩 Zakaz berish", url=f"https://t.me/{BOT_USERNAME}?start=zakaz"
     ))
@@ -124,6 +119,11 @@ def admin_driver_decision_kb(uid: str) -> InlineKeyboardMarkup:
         InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"drv_ok:{uid}"),
         InlineKeyboardButton("❌ Rad etish", callback_data=f"drv_no:{uid}"),
     )
+    from storage import get_user
+    username = get_user(uid).get("username")
+    if username:
+        kb.add(InlineKeyboardButton("👤 Telegram profili", url=f"https://t.me/{username}"))
+    kb.add(InlineKeyboardButton("📋 Batafsil", callback_data=f"drv_view:{uid}"))
     return kb
 
 
@@ -133,6 +133,11 @@ def admin_driver_manage_kb(uid: str) -> InlineKeyboardMarkup:
         InlineKeyboardButton("❌ Chiqarib tashlash", callback_data=f"drv_remove:{uid}"),
         InlineKeyboardButton("✅ Qoldirish", callback_data=f"drv_keep:{uid}"),
     )
+    from storage import get_user
+    username = get_user(uid).get("username")
+    if username:
+        kb.add(InlineKeyboardButton("👤 Telegram profili", url=f"https://t.me/{username}"))
+    kb.add(InlineKeyboardButton("➕ Obunani uzaytirish", callback_data=f"admin_extend:{uid}"))
     return kb
 
 
@@ -175,25 +180,24 @@ def contact_admin_kb() -> InlineKeyboardMarkup:
 def passenger_entry_kb() -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(InlineKeyboardButton("🚖 Haydovchi chaqirish", callback_data="pass_order"))
+    kb.add(InlineKeyboardButton("🔎 Guruhdan shofyor qidirish", callback_data="pass_group"))
     kb.add(InlineKeyboardButton("🏠 Bosh menyu", callback_data="menu:home"))
     return kb
 
 
 def route_kb() -> InlineKeyboardMarkup:
-    kb = InlineKeyboardMarkup(row_width=1)
+    kb = InlineKeyboardMarkup(row_width=2)
     for i, r in enumerate(PASSENGER_ROUTES):
-        kb.add(InlineKeyboardButton(f"🚗 {r}", callback_data=f"route:idx:{i}"))
+        kb.insert(InlineKeyboardButton(f"🚗 {r}", callback_data=f"route:idx:{i}"))
     kb.add(InlineKeyboardButton("✍️ O‘zim yozaman", callback_data="route:custom"))
     return kb
 
 
-def location_choice_kb() -> ReplyKeyboardMarkup:
-    """Lokatsiyani tugma orqali yuborish FAQAT reply klaviaturada
-    ishlaydi — Telegram shunday talab qiladi."""
-    kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    kb.add(KeyboardButton("📍 Lokatsiyani yuborish", request_location=True))
-    kb.add(KeyboardButton("➡️ Lokatsiyasiz davom etish"))
-    kb.add(KeyboardButton("❌ Bekor qilish"))
+def location_choice_kb():
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton("📍 Lokatsiya yuborish", callback_data="input:location"))
+    kb.add(InlineKeyboardButton("➡️ Lokatsiyasiz davom etish", callback_data="location:skip"))
+    kb.add(InlineKeyboardButton("❌ Bekor qilish", callback_data="cancel_flow"))
     return kb
 
 

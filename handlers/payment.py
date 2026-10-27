@@ -68,6 +68,12 @@ async def payment_method_back(call: types.CallbackQuery):
 
 async def _create_payment_record(uid: str, tariff_key: str, method: str, receipt_photo: str = None) -> str:
     tariff = TARIFFS[tariff_key]
+    for payment_id, previous in payments_store.data["payments"].items():
+        if previous["uid"] == uid and previous["status"] == "pending" and previous["tariff"] == tariff_key and previous["method"] == method:
+            if receipt_photo:
+                previous["receipt_photo"] = receipt_photo
+                await save_payments()
+            return payment_id
     payment_id = new_id()
     payments_store.data["payments"][payment_id] = {
         "uid": uid,

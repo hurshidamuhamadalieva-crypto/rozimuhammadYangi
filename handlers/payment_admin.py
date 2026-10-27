@@ -16,7 +16,7 @@ async def _update_payment_notifs(payment_id: str, new_text: str):
     notifs = payments_store.data.get("payment_notifs", {}).get(payment_id, [])
     for item in notifs:
         try:
-            await bot.edit_message_caption(item["admin"], item["msg_id"], caption=new_text)
+            await bot.edit_message_caption(chat_id=item["admin"], message_id=item["msg_id"], caption=new_text, reply_markup=None)
         except Exception:
             try:
                 await bot.edit_message_text(new_text, item["admin"], item["msg_id"])
@@ -42,16 +42,8 @@ async def admin_payment_action(call: types.CallbackQuery):
     if action == "pay_ok":
         p["status"] = "approved"
         u = get_user(uid)
-        start = time.time()
-        end = None if tariff["days"] is None else start + tariff["days"] * 86400
-        u["subscription"] = {
-            "tariff": tariff["label"],
-            "start": start,
-            "end": end,
-            "active": True,
-            "reminded_3d": False,
-            "reminded_expired": False,
-        }
+        from utils import extend_subscription
+        end = extend_subscription(u, tariff)
         u["driver_status"] = "approved"
         await save_users()
         await save_payments()
@@ -73,20 +65,13 @@ async def admin_payment_action(call: types.CallbackQuery):
         await call.answer("Tasdiqlandi ✅")
 
     else:
-        p["status"] = "rejected"
-        await save_payments()
-        await _update_payment_notifs(payment_id, "❌ To‘lov rad etildi")
-        try:
-            await bot.send_message(
-                int(uid),
-                "❌ To‘lovingiz rad etildi.\n\n"
-                "Iltimos, ma’lumotlarni tekshirib qayta urinib ko‘ring yoki quyidagi "
-                f"admin bilan bog‘laning:\n👤 {ADMIN_USERNAME}\n📞 {ADMIN_PHONE}",
-                reply_markup=contact_admin_kb(),
-            )
-        except Exception:
-            pass
-        await call.answer("Rad etildi ❌")
+        from states import AdminStates
+        state = dp.current_state(chat=call.from_user.id, user=call.from_user.id)
+        await state.set_data({"reject_payment": payment_id})
+        await state.set_state(AdminStates.rejection_reason)
+        await call.message.answer("To‘lovni rad etish sababini yozing (bekor qilish uchun /start):")
+        await call.answer()
+
 
 
 @dp.callback_query_handler(lambda c: c.data == "menu:admin_payments", state="*")

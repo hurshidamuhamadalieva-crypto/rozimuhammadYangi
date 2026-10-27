@@ -94,6 +94,7 @@ async def driver_ads_loop():
 
         if changed:
             await save_ads()
+            await save_users()
         await asyncio.sleep(BACKGROUND_LOOP_INTERVAL)
 
 
@@ -134,7 +135,7 @@ async def subscription_watch_loop():
                     try:
                         await bot.send_message(
                             int(uid),
-                            "⚠️ Obunangizning to‘lov kuni keldi! Vaqtingiz tugadi. "
+                            "⚠️ Obunangiz tugashiga 24 soatdan kam qoldi. "
                             "Iltimos, obunani yangilang, aks holda haydovchi bo‘limidan "
                             "foydalanish to‘xtatiladi.",
                             reply_markup=tariff_kb(),

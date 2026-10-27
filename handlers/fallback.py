@@ -54,6 +54,6 @@ async def fallback_message(message: types.Message, state: FSMContext):
 @dp.callback_query_handler(lambda c: True, state="*")
 async def fallback_callback(call: types.CallbackQuery):
     await call.answer(
-        "⏳ Bu zakazni hamkasbingiz qabul qildi. Iltimos ishlashda to'xtamang, yangi zakazlarni kuting ....",
+        "Bu tugma eskirgan yoki hozirgi bosqichga mos emas. /start orqali menyuni oching.",
         show_alert=True,
     )

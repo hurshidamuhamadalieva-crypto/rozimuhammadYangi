@@ -80,3 +80,8 @@ async def cancel_reply_button(message: types.Message, state: FSMContext):
     is_admin = message.from_user.id in ADMINS
     await message.answer("❌ Bekor qilindi.", reply_markup=REMOVE_KB)
     await message.answer("🏠 Asosiy menyu:", reply_markup=main_menu_kb(is_admin=is_admin))
+
+@dp.callback_query_handler(lambda c: c.data == "input:phone", state="*")
+async def phone_help(call):
+    await call.message.answer("📱 Telefoningizni yozing: 901234567 yoki +998901234567. Kontaktni Telegramdagi 📎 → Kontakt orqali ham yuborishingiz mumkin.")
+    await call.answer()

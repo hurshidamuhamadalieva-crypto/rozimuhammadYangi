@@ -22,3 +22,7 @@ class PassengerStates(StatesGroup):
     waiting_route_custom = State()
     waiting_order_text = State()
     waiting_location = State()
+
+
+class AdminStates(StatesGroup):
+    rejection_reason = State()

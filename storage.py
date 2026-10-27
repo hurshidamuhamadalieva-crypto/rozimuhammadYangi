@@ -22,6 +22,7 @@ class JSONStore:
         self.path = Path(path)
         self._lock = asyncio.Lock()
         self.data = self._load(default)
+        self._last_saved = None
 
     def _load(self, default: dict) -> dict:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -44,11 +45,13 @@ class JSONStore:
 
     async def save(self):
         async with self._lock:
+            payload = json.dumps(self.data, ensure_ascii=False, separators=(",", ":"))
+            if payload == self._last_saved:
+                return
             tmp_path = self.path.with_suffix(".tmp")
-            tmp_path.write_text(
-                json.dumps(self.data, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
+            tmp_path.write_text(payload, encoding="utf-8")
             tmp_path.replace(self.path)
+            self._last_saved = payload
 
 
 class FileStorage(BaseStorage):

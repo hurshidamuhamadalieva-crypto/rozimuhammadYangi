@@ -5,6 +5,7 @@ handlers/driver.py — haydovchi telefon raqami, e'lon yaratish
 """
 import time
 import logging
+from html import escape, unescape
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 from aiogram.utils.exceptions import TelegramAPIError
@@ -14,7 +15,7 @@ from config import ADMINS, DRIVER_CHANNELS
 from storage import get_user, save_users, save_ads, ads_store
 from states import DriverStates
 from stickers import send_sticker_safe
-from utils import normalize_phone, new_id, fmt_date, seconds_to_human
+from utils import normalize_phone, new_id, fmt_date, seconds_to_human, driver_allowed
 from keyboards import (
     main_menu_kb, driver_main_kb, phone_request_kb, REMOVE_KB,
     interval_inline_kb, ad_confirm_kb, driver_channel_ad_kb, cancel_inline_kb,
@@ -37,12 +38,23 @@ async def driver_get_phone(message: types.Message, state: FSMContext):
             reply_markup=phone_request_kb(),
         )
 
+    flow = await state.get_data()
     u = get_user(uid)
     u["phone"] = phone
     await save_users()
     await state.finish()
 
     await message.answer(f"✅ Raqamingiz saqlandi: <code>{phone}</code>", reply_markup=REMOVE_KB)
+
+    if flow.get("driver_application"):
+        from storage import touch_user_profile
+        from handlers.driver_admin import notify_admins_new_application
+        touch_user_profile(uid, message.from_user.full_name, message.from_user.username)
+        u["driver_status"] = "pending"
+        u["driver_paused"] = True
+        await save_users()
+        await notify_admins_new_application(uid, u["full_name"], u["username"])
+        return await message.answer("✅ Arizangiz adminga yuborildi.", reply_markup=main_menu_kb())
 
     if not u["subscription"].get("active"):
         from handlers.payment import show_tariffs
@@ -56,7 +68,7 @@ def _driver_ready(u: dict, uid: str = None) -> bool:
     is_admin = uid is not None and int(uid) in ADMINS
     if u.get("driver_status") != "approved":
         return False
-    if not u["subscription"].get("active"):
+    if uid is not None and not driver_allowed(uid):
         return False
     if not is_admin and not u.get("phone"):
         return False
@@ -108,7 +120,12 @@ async def driver_new_ad_fresh(call: types.CallbackQuery, state: FSMContext):
 
 @dp.message_handler(state=DriverStates.waiting_ad_text, content_types=["text"])
 async def driver_get_text(message: types.Message, state: FSMContext):
-    await state.update_data(ad_text=message.text)
+    if len(message.text) > 900:
+        return await message.answer("E’lon matni 900 belgidan oshmasin.")
+    from html import escape
+    if len(escape(message.text)) > 1024:
+        return await message.answer("Matnda maxsus belgilar ko‘p. Matnni qisqartiring.")
+    await state.update_data(ad_text=escape(message.text))
     await state.set_state(DriverStates.waiting_ad_photo)
     await message.answer("📸 Mashina rasmini yuboring (majburiy):", reply_markup=cancel_inline_kb())
 
@@ -118,7 +135,7 @@ async def driver_get_photo(message: types.Message, state: FSMContext):
     await state.update_data(ad_photo=message.photo[-1].file_id)
     data = await state.get_data()
     await message.answer(
-        f"⏱ E’lon necha daqiqada bir marta yuborilsin?\n\n✍️ Matn: {data.get('ad_text', '')[:200]}",
+        f"⏱ E’lon necha daqiqada bir marta yuborilsin?\n\n✍️ Matn: {escape(unescape(data.get('ad_text', ''))[:200])}",
         reply_markup=interval_inline_kb(),
     )
 
@@ -134,7 +151,7 @@ async def driver_pick_interval(call: types.CallbackQuery, state: FSMContext):
     await state.update_data(ad_interval=minutes)
     data = await state.get_data()
 
-    text_preview = (data.get("ad_text") or "")[:300]
+    text_preview = escape(unescape(data.get("ad_text") or "")[:300])
     summary = (
         f"📋 <b>E’lon xulosasi</b>\n\n"
         f"✍️ Matn: {text_preview}\n"
@@ -174,6 +191,12 @@ async def driver_confirm_ad(call: types.CallbackQuery, state: FSMContext):
         return await call.answer("Xatolik: e’lon ma’lumotlari topilmadi. Qaytadan boshlang.", show_alert=True)
 
     u = get_user(uid)
+    if not _driver_ready(u, uid):
+        await state.finish()
+        return await call.answer("Obunangiz yoki haydovchi huquqingiz faol emas.", show_alert=True)
+    for old in ads_store.data["driver"].values():
+        if old.get("user") == uid:
+            old["active"] = False
     ad_id = new_id()
     ads_store.data["driver"][ad_id] = {
         "user": uid,
@@ -207,7 +230,7 @@ async def driver_confirm_ad(call: types.CallbackQuery, state: FSMContext):
     else:
         await call.message.answer(
             "⚠️ E’lon guruhga yuborilmadi!\n\n"
-            f"Sabab: <code>{err}</code>\n\n"
+            f"Sabab: <code>{escape(str(err))}</code>\n\n"
             "Iltimos adminga xabar bering — botning kanal/guruhda administrator "
             "ekanligini va kanal ID (config.py dagi DRIVER_CHANNELS) to‘g‘riligini tekshiring.",
             reply_markup=driver_main_kb(),
@@ -226,6 +249,8 @@ async def _broadcast_driver_ad(ad_id: str):
     if not ad:
         return False, "E'lon topilmadi"
     user = get_user(ad["user"])
+    if not driver_allowed(ad["user"]) or user.get("driver_paused") or not ad.get("active"):
+        return False, "Haydovchi yoki e’lon faol emas"
     kb = driver_channel_ad_kb(ad_id, ad["user"], user.get("username"))
 
     any_success = False
@@ -340,4 +365,11 @@ async def my_subscription(call: types.CallbackQuery, state: FSMContext):
         f"📅 Tugash sanasi: {expiry_text}",
         reply_markup=driver_main_kb(),
     )
+    await call.answer()
+
+@dp.callback_query_handler(lambda c: c.data == "drv_renew", state="*")
+async def renew_subscription(call, state):
+    await state.finish()
+    from handlers.payment import show_tariffs
+    await show_tariffs(call.message.chat.id)
     await call.answer()

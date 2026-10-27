@@ -8,7 +8,7 @@ from aiogram.dispatcher import FSMContext
 from html import escape
 
 from bot_instance import bot, dp
-from config import ADMINS
+from config import ADMINS, TARIFFS
 from storage import get_user, save_users, users_store
 from states import DriverStates
 from utils import display_name
@@ -16,6 +16,7 @@ from stickers import send_sticker_safe
 from keyboards import (
     driver_apply_kb, main_menu_kb, driver_main_kb,
     admin_driver_decision_kb, admin_driver_manage_kb, phone_request_kb,
+    admin_add_driver_confirm_kb,
 )
 
 
@@ -334,3 +335,98 @@ async def admin_grant(call):
     except Exception:
         await call.message.answer("Haydovchiga xabar yetkazilmadi.")
     await call.answer()
+
+
+@dp.callback_query_handler(lambda c: c.data == "menu:admin_add_driver", state="*")
+async def admin_add_driver_start(call: types.CallbackQuery, state: FSMContext):
+    if call.from_user.id not in ADMINS:
+        return await call.answer("Faqat admin uchun.", show_alert=True)
+    await state.finish()
+    await state.set_state(AdminStates.add_driver_id)
+    await call.message.answer(
+        "🧑‍✈️ Shofyor Telegram ID raqamini yuboring.\n\n"
+        "Masalan: <code>123456789</code>",
+    )
+    await call.answer()
+
+
+@dp.message_handler(state=AdminStates.add_driver_id, content_types=["text"])
+async def admin_add_driver_id(message: types.Message, state: FSMContext):
+    if message.from_user.id not in ADMINS:
+        return
+    uid = message.text.strip().removeprefix("+")
+    if not uid.isdigit():
+        return await message.answer("❌ ID faqat raqamlardan iborat bo‘lishi kerak. Qayta yuboring:")
+    user = get_user(uid)
+    await state.update_data(add_driver_uid=uid)
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    for key, tariff in TARIFFS.items():
+        kb.insert(types.InlineKeyboardButton(
+            f"{tariff['label']} — {tariff['price']:,}".replace(",", " ") + " so‘m",
+            callback_data=f"admin_add_tariff:{uid}:{key}",
+        ))
+    await message.answer(
+        f"👤 ID: <code>{uid}</code>\n"
+        f"📞 Telefon: {user.get('phone') or 'kiritilmagan'}\n\n"
+        "Tarifni tanlang:",
+        reply_markup=kb,
+    )
+
+
+@dp.callback_query_handler(lambda c: c.data.startswith("admin_add_tariff:"), state="*")
+async def admin_add_driver_tariff(call: types.CallbackQuery, state: FSMContext):
+    if call.from_user.id not in ADMINS:
+        return await call.answer("Faqat admin uchun.", show_alert=True)
+    _, uid, tariff_key = call.data.split(":")
+    tariff = TARIFFS.get(tariff_key)
+    if not tariff:
+        return await call.answer("Tarif topilmadi.", show_alert=True)
+    await state.update_data(add_driver_uid=uid, add_driver_tariff=tariff_key)
+    await call.message.edit_text(
+        f"🧑‍✈️ Shofyor ID: <code>{uid}</code>\n"
+        f"📦 Tarif: <b>{tariff['label']}</b>\n"
+        f"💰 Narx: <b>{tariff['price']:,}</b> so‘m\n\n"
+        "To‘lovsiz avtomatik tasdiqlaysizmi?",
+        reply_markup=admin_add_driver_confirm_kb(uid, tariff_key),
+    )
+    await call.answer()
+
+
+@dp.callback_query_handler(lambda c: c.data == "admin_add_cancel", state="*")
+async def admin_add_driver_cancel(call: types.CallbackQuery, state: FSMContext):
+    if call.from_user.id not in ADMINS:
+        return await call.answer("Faqat admin uchun.", show_alert=True)
+    await state.finish()
+    await call.message.edit_text("❌ Shofyor qo‘shish bekor qilindi.", reply_markup=main_menu_kb(is_admin=True))
+    await call.answer()
+
+
+@dp.callback_query_handler(lambda c: c.data.startswith("admin_add_confirm:"), state="*")
+async def admin_add_driver_confirm(call: types.CallbackQuery, state: FSMContext):
+    if call.from_user.id not in ADMINS:
+        return await call.answer("Faqat admin uchun.", show_alert=True)
+    _, uid, tariff_key = call.data.split(":")
+    tariff = TARIFFS.get(tariff_key)
+    if not tariff:
+        return await call.answer("Tarif topilmadi.", show_alert=True)
+    user = get_user(uid)
+    from utils import extend_subscription, fmt_date
+    end = extend_subscription(user, tariff)
+    user["driver_status"] = "approved"
+    user["driver_paused"] = not bool(user.get("phone"))
+    user.pop("rejection_reason", None)
+    await save_users()
+    await state.finish()
+    expiry = "umrbod" if end is None else fmt_date(end)
+    result = f"✅ Shofyor <code>{uid}</code> avtomatik tasdiqlandi.\n📦 Tarif: {tariff['label']}\n📅 Tugashi: {expiry}"
+    await call.message.edit_text(result, reply_markup=main_menu_kb(is_admin=True))
+    try:
+        await bot.send_message(
+            int(uid),
+            f"🎉 Admin sizni shofyor sifatida avtomatik tasdiqladi!\n"
+            f"📦 Tarif: <b>{tariff['label']}</b>\n📅 Tugashi: {expiry}",
+            reply_markup=driver_main_kb() if user.get("phone") else main_menu_kb(),
+        )
+    except Exception:
+        pass
+    await call.answer("Tasdiqlandi ✅")

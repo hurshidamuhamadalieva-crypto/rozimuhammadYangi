@@ -47,7 +47,7 @@ ADMIN_PHONE = "+998952871666"         # admin telefon raqami (foydalanuvchiga ko
 ADMIN_USERNAME = "@akramjonov777"     # admin telegram username (foydalanuvchiga ko'rsatiladi)
 
 # ==================== GURUH / KANALLAR ====================
-DRIVER_CHANNELS = [-1003640341366]     # haydovchilar e'lonlari shu yerga tushadi
+DRIVER_CHANNELS = [-1003322681147]     # haydovchilar e'lonlari shu yerga tushadi
 PASSENGER_CHANNELS = [-1003888459573]  # yo'lovchilar e'lonlari shu yerga tushadi
 
 # ==================== FAYLLAR ====================

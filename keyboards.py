@@ -29,6 +29,7 @@ def main_menu_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
             InlineKeyboardButton("👥 Haydovchilar", callback_data="menu:admin_drivers"),
             InlineKeyboardButton("💳 To‘lovlar", callback_data="menu:admin_payments"),
         )
+        kb.add(InlineKeyboardButton("➕ Shofyor qo‘shish", callback_data="menu:admin_add_driver"))
     return kb
 
 
@@ -138,6 +139,15 @@ def admin_driver_manage_kb(uid: str) -> InlineKeyboardMarkup:
     if username:
         kb.add(InlineKeyboardButton("👤 Telegram profili", url=f"https://t.me/{username}"))
     kb.add(InlineKeyboardButton("➕ Obunani uzaytirish", callback_data=f"admin_extend:{uid}"))
+    return kb
+
+
+def admin_add_driver_confirm_kb(uid: str, tariff_key: str) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"admin_add_confirm:{uid}:{tariff_key}"),
+        InlineKeyboardButton("❌ Bekor qilish", callback_data="admin_add_cancel"),
+    )
     return kb
 
 

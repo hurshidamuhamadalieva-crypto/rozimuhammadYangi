@@ -26,3 +26,4 @@ class PassengerStates(StatesGroup):
 
 class AdminStates(StatesGroup):
     rejection_reason = State()
+    add_driver_id = State()

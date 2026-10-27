@@ -14,6 +14,9 @@ Bir vaqtda faqat bitta bot nusxasini ishlating (JSON saqlash).
 - Lokatsiya Telegramning odatiy lokatsiya tugmasi bilan yuboriladi; lokatsiyasiz davom etish inline tugma orqali.
 - Haydovchi arizasi birlashtirilgan: telefon va profil ma’lumotlari → tarif → to‘lov → adminning yagona qarori.
 - Guruhdan haydovchi qidirish: https://t.me/bogdod_taxi16
+- Admin paneldagi “Shofyor qo‘shish” orqali Telegram ID va tarif tanlanib, shofyor to‘lovsiz avtomatik faollashtiriladi.
+- Guruhlarda bot buyruqlarga javob bermaydi. Odam yozgan kalit so‘zli buyurtmalar `keywords.py` ro‘yxati orqali aniqlanib,
+  yo‘lovchilar guruhiga yozgan odam profili va bot tugmasi bilan yuboriladi; botning o‘zi yuborgan xabarlar filtrlanmaydi.
 - Telefon va lokatsiyani faqat tasdiqlangan, faol obunali haydovchi ko‘radi.
 - Buyurtmani birinchi olgan haydovchi bajaradi va safarni yakunlay oladi.
 - Haydovchi: rasmli e’lon, 5/10/15/20/30 daqiqa interval; yangi e’lon eskisini to‘xtatadi.
@@ -24,6 +27,7 @@ Bir vaqtda faqat bitta bot nusxasini ishlating (JSON saqlash).
 - Chek va admin orqali to‘lov mavjud. Click/Payme integratsiyasi hali yozilmagan.
 - 12 soatda e’lon eslatmasi, 24 soatda avtomatik to‘xtash; obuna tugaganda e’lonlar to‘xtaydi.
 - JSON yozish o‘zgarmagan ma’lumotni qayta diskka yozmaydi. Sana Toshkent vaqtida.
+- Shofyor e’lonlari `-1003322681147` guruhiga yuboriladi.
 
 ## Tekshirish
 `python -m unittest test_bot -v` — Telegramga ulanmaydigan tekshiruvlar.

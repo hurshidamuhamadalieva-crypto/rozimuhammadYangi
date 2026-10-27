@@ -23,6 +23,7 @@ from handlers import driver         # noqa: F401  telefon, e'lon berish, to'xtat
 from handlers import payment        # noqa: F401  tariflar, to'lov usullari
 from handlers import payment_admin  # noqa: F401  admin to'lov tasdiqlash
 from handlers import passenger      # noqa: F401  yo'lovchi bo'limi
+from handlers import group_filter  # noqa: F401  guruhdagi keyword buyurtmalar
 from handlers import fallback       # noqa: F401  hech narsa mos kelmasa - oxirgi himoya
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")

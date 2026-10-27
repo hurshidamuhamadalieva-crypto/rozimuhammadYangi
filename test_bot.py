@@ -56,8 +56,13 @@ class BotTests(unittest.TestCase):
         self.assertTrue(location_choice_kb().keyboard)
 
     def test_import_handlers(self):
-        for name in ('start', 'driver_admin', 'driver', 'payment', 'payment_admin', 'passenger', 'fallback'):
+        for name in ('start', 'driver_admin', 'driver', 'payment', 'payment_admin', 'passenger', 'group_filter', 'fallback'):
             importlib.import_module('handlers.' + name)
+
+    def test_keyword_list_matches_user_order(self):
+        from keywords import KEYWORDS_RE
+        self.assertIsNotNone(KEYWORDS_RE.search('Rishtondan 1kishi bor, Toshkentga ketamiz'))
+        self.assertIsNone(KEYWORDS_RE.search('Assalomu alaykum, yangilik bormi?'))
 
     def test_unapproved_cannot_view_or_take(self):
         from handlers.passenger import view_passenger_ad, take_passenger_ad
